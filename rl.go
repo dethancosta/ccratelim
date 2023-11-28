@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func HandleUnlimited(w http.ResponseWriter, r *http.Request) {
@@ -14,6 +15,19 @@ func HandleUnlimited(w http.ResponseWriter, r *http.Request) {
 func HandleLimited(w http.ResponseWriter, r *http.Request) {
 	ipAddr := strings.SplitN(r.RemoteAddr, ":", 2)[0]
 
+	//TokenBucket(ipAddr, w)
+	FixedWindow(ipAddr, w)
+}
+
+type RequestItem struct {
+	IpAddr string
+	At time.Time
+}
+
+
+// Rate Limiter functions
+
+func TokenBucket(ipAddr string, w http.ResponseWriter) {
 	mutex.Lock()
 	if _, ok := buckets[ipAddr]; !ok {
 		buckets[ipAddr] = 10
@@ -32,4 +46,19 @@ func HandleLimited(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
+}
+
+func FixedWindow(ipAddr string, w http.ResponseWriter) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if windowCount[ipAddr] > WINDOW_LIMIT {
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+	reqItem := RequestItem{
+		ipAddr,
+		time.Now(),
+	}
+	windowSlice = append(windowSlice, reqItem)
+	w.WriteHeader(http.StatusOK)
 }
