@@ -9,7 +9,7 @@ import (
 
 var (
 	PORT = "8080"
-	buckets map[string]int = make(map[string]int)
+	buckets map[string]uint8 = make(map[string]uint8)
 	mutex = sync.RWMutex{}
 	waitDuration = 1 * time.Second
 )
