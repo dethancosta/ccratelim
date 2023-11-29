@@ -18,7 +18,7 @@ var (
 	buckets = make(map[string]uint8)
 	mutex = sync.RWMutex{}
 
-	windowSlice = make([]RequestItem, 0)
+	slidingMap = make(map[string][]time.Time)
 	windowCount = make(map[string]uint32)
 )
 
@@ -27,8 +27,9 @@ func main() {
 	server.Handle("/unlimited", http.HandlerFunc(HandleUnlimited))
 	server.Handle("/limited", http.HandlerFunc(HandleLimited))
 
-	//go addTokens()
-	go updateWindow()
+	// go addTokens()
+	// go updateFixedWindow()
+	go updateSlidingWindow()
 
 	fmt.Println("Listening on port " + PORT)
 	err := http.ListenAndServe("localhost:" + PORT, server)
@@ -50,19 +51,30 @@ func addTokens() {
 	}
 }
 
-func updateWindow() {
+func updateFixedWindow() {
 	for {
-		stale := make([]RequestItem, 0)
 		mutex.Lock()
-		for i := range windowSlice {
-			if windowSlice[i].At.Compare(time.Now().Add(-WINDOW)) < 0 {
-				continue 
+		windowCount = make(map[string]uint32)
+		mutex.Unlock()
+
+		time.Sleep(WINDOW)
+	}
+}
+
+func updateSlidingWindow() {
+	for {
+		mutex.Lock()
+		for k, v := range slidingMap {
+			times := v
+			// var cutoff int
+			for i := range times {
+				if times[i].Before(time.Now().Add(-WINDOW)) {
+					continue
+				}
+				slidingMap[k] = slidingMap[k][i:]
+				break
 			}
-			stale = windowSlice[:i]
-			windowSlice = windowSlice[i:]
-		}
-		for _, r := range stale {
-			windowCount[r.IpAddr]--
+			// slidingMap[k] = times[cutoff:]
 		}
 		mutex.Unlock()
 

@@ -15,9 +15,8 @@ func HandleUnlimited(w http.ResponseWriter, r *http.Request) {
 func HandleLimited(w http.ResponseWriter, r *http.Request) {
 	ipAddr := strings.SplitN(r.RemoteAddr, ":", 2)[0]
 
-	// TokenBucket(ipAddr, w)
-	// FixedWindow(ipAddr, w)
-	SlidingWindow(ipAddr, w)
+	//TokenBucket(ipAddr, w)
+	FixedWindow(ipAddr, w)
 }
 
 type RequestItem struct {
@@ -60,19 +59,21 @@ func FixedWindow(ipAddr string, w http.ResponseWriter) {
 		return
 	}
 	windowCount[ipAddr]++
-	fmt.Printf("%s: %d\n", ipAddr, count+1)
+	fmt.Printf("%s: %d", ipAddr, count+1)
 	w.WriteHeader(http.StatusOK)
 }
 
 func SlidingWindow(ipAddr string, w http.ResponseWriter) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	l := len(slidingMap[ipAddr])
-	if l >= WINDOW_LIMIT {
+	if windowCount[ipAddr] >= WINDOW_LIMIT {
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
-	fmt.Printf("%s: %d\n", time.Now().Format(time.TimeOnly), len(slidingMap[ipAddr]))
-	slidingMap[ipAddr] = append(slidingMap[ipAddr], time.Now())
+	reqItem := RequestItem{
+		ipAddr,
+		time.Now(),
+	}
+	windowSlice = append(windowSlice, reqItem)
 	w.WriteHeader(http.StatusOK)
 }
