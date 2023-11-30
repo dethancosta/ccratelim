@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func HandleUnlimited(w http.ResponseWriter, r *http.Request) {
@@ -23,9 +25,8 @@ func HandleLimited(w http.ResponseWriter, r *http.Request) {
 
 type RequestItem struct {
 	IpAddr string
-	At time.Time
+	At     time.Time
 }
-
 
 // Rate Limiter functions
 
@@ -77,19 +78,63 @@ func SlidingWindow(ipAddr string, w http.ResponseWriter) {
 }
 
 func SlidingCount(ipAddr string, w http.ResponseWriter) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	ratioCurrent := time.Now().Sub(lastUpdate).Seconds()/WINDOW.Seconds()
+	/*
+		mutex.Lock()
+		defer mutex.Unlock()
+		ratioCurrent := time.Now().Sub(lastUpdate).Seconds()/WINDOW.Seconds()
+		ratioPrev := 1.0 - ratioCurrent
+		var prevCount uint32
+		var currCount uint32
+		var ok bool
+		if prevCount, ok = previousWindow[ipAddr]; !ok {
+			previousWindow[ipAddr] = 0
+		}
+		if currCount, ok = windowCount[ipAddr]; !ok {
+			windowCount[ipAddr] = 0
+		}
+		rate := (ratioPrev * float64(prevCount)) +
+			(ratioCurrent * float64(currCount))
+		if rate > WINDOW_LIMIT {
+			// http.Error(w, "Slow Down!!", http.StatusTooManyRequests)
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+
+		windowCount[ipAddr]++
+	*/
+	redisCount := redisClient.HGet(ctx, "currWindow", ipAddr)
+	var currCount int
+	var err error
+	if redisCount.Err() != redis.Nil {
+		currCount, err = redisCount.Int()
+	}
+	if err != nil {
+		fmt.Println("SlidingCount: ", err.Error())
+		http.Error(w, "Internal Error", http.StatusInternalServerError)
+	}
+
+	var prevCount int
+	redisCount = redisClient.HGet(ctx, "prevWindow", ipAddr)
+	if redisCount.Err() != redis.Nil {
+		prevCount, err = redisCount.Int()
+	}
+	if err != nil {
+		fmt.Println("SlidingCount: ", err.Error())
+		http.Error(w, "Internal Error", http.StatusInternalServerError)
+	}
+
+	redisUpdated := redisClient.Get(ctx, "lastUpdate")
+	var lastUpdate time.Time
+	if redisUpdated.Err() != redis.Nil {
+		lastUpdate, err = redisUpdated.Time()
+	}
+	if err != nil {
+		fmt.Println("SlidingCount: ", err.Error())
+		http.Error(w, "Internal Error", http.StatusInternalServerError)
+	}
+
+	ratioCurrent := time.Now().Sub(lastUpdate).Seconds() / WINDOW.Seconds()
 	ratioPrev := 1.0 - ratioCurrent
-	var prevCount uint32
-	var currCount uint32
-	var ok bool
-	if prevCount, ok = previousWindow[ipAddr]; !ok {
-		previousWindow[ipAddr] = 0
-	}
-	if currCount, ok = windowCount[ipAddr]; !ok {
-		windowCount[ipAddr] = 0
-	}
 	rate := (ratioPrev * float64(prevCount)) +
 		(ratioCurrent * float64(currCount))
 	if rate > WINDOW_LIMIT {
@@ -97,7 +142,9 @@ func SlidingCount(ipAddr string, w http.ResponseWriter) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
+	redisClient.HIncrBy(ctx, "currWindow", ipAddr, 1) // TODO check return value
 
-	windowCount[ipAddr]++
+	fmt.Printf("Prev %d, Current %d\n", prevCount, currCount)
+
 	w.WriteHeader(http.StatusOK)
 }
