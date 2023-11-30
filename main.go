@@ -15,11 +15,13 @@ const (
 )
 
 var (
-	buckets = make(map[string]uint8)
+	buckets = make(map[string]uint32)
 	mutex = sync.RWMutex{}
 
 	slidingMap = make(map[string][]time.Time)
 	windowCount = make(map[string]uint32)
+	previousWindow = make(map[string]uint32)
+	lastUpdate = time.Now()
 )
 
 func main() {
@@ -29,7 +31,8 @@ func main() {
 
 	// go addTokens()
 	// go updateFixedWindow()
-	go updateSlidingWindow()
+	// go updateSlidingWindow()
+	go updateSlidingCounter()
 
 	fmt.Println("Listening on port " + PORT)
 	err := http.ListenAndServe("localhost:" + PORT, server)
@@ -82,3 +85,14 @@ func updateSlidingWindow() {
 	}
 }
 
+func updateSlidingCounter() {
+	for {
+		mutex.Lock()
+		previousWindow = windowCount
+		windowCount = make(map[string]uint32)
+		lastUpdate = time.Now()
+		mutex.Unlock()
+
+		time.Sleep(WINDOW)
+	}
+}

@@ -17,7 +17,8 @@ func HandleLimited(w http.ResponseWriter, r *http.Request) {
 
 	// TokenBucket(ipAddr, w)
 	// FixedWindow(ipAddr, w)
-	SlidingWindow(ipAddr, w)
+	// SlidingWindow(ipAddr, w)
+	SlidingCount(ipAddr, w)
 }
 
 type RequestItem struct {
@@ -60,7 +61,6 @@ func FixedWindow(ipAddr string, w http.ResponseWriter) {
 		return
 	}
 	windowCount[ipAddr]++
-	fmt.Printf("%s: %d\n", ipAddr, count+1)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -72,7 +72,32 @@ func SlidingWindow(ipAddr string, w http.ResponseWriter) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
-	fmt.Printf("%s: %d\n", time.Now().Format(time.TimeOnly), len(slidingMap[ipAddr]))
 	slidingMap[ipAddr] = append(slidingMap[ipAddr], time.Now())
+	w.WriteHeader(http.StatusOK)
+}
+
+func SlidingCount(ipAddr string, w http.ResponseWriter) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	ratioCurrent := time.Now().Sub(lastUpdate).Seconds()/WINDOW.Seconds()
+	ratioPrev := 1.0 - ratioCurrent
+	var prevCount uint32
+	var currCount uint32
+	var ok bool
+	if prevCount, ok = previousWindow[ipAddr]; !ok {
+		previousWindow[ipAddr] = 0
+	}
+	if currCount, ok = windowCount[ipAddr]; !ok {
+		windowCount[ipAddr] = 0
+	}
+	rate := (ratioPrev * float64(prevCount)) +
+		(ratioCurrent * float64(currCount))
+	if rate > WINDOW_LIMIT {
+		// http.Error(w, "Slow Down!!", http.StatusTooManyRequests)
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+
+	windowCount[ipAddr]++
 	w.WriteHeader(http.StatusOK)
 }
